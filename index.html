@@ -1,22 +1,54 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Cafe Curator</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>☕️</text></svg>">
-  <link href="https://fonts.googleapis.com/css2?family=Savate:ital,wght@0,200..900;1,200..900&display=swap" rel="stylesheet">
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Montserrat:wght@700&display=swap" rel="stylesheet">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Hammer.js (must load before app.js) -->
   <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
-  <link rel="stylesheet" href="styles.css">
+
+  <!-- Maps JS SDK (with Places) -->
+  <script defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBeABvJedUva0hrIaRzXvawhFy1GSbjs5U&libraries=places"></script>
+
+  <!-- App logic -->
+  <script defer src="app.js"></script>
 </head>
 <body>
-  <h1>☕️ Cafe Curator 🍵</h1>
-  <p>Find and save the best cafes near you.</p>
+  <header>
+    <h1 id="title">☕ Cafés near you</h1>
+    <p id="subtitle" class="subtitle">Find and save the best cafés nearby.</p>
 
-  <div>
-    <button onclick="getLocation()">Find Cafes Near Me</button>
-    <button onclick="showSaved()">Show Saved Cafes</button>
-  </div>
+    <div class="toolbar">
+      <label class="select-wrap">
+        <span>Search for</span>
+        <select id="placeType" onchange="onTypeChange(this.value)">
+          <option value="cafe">Cafés</option>
+          <option value="restaurant">Restaurants</option>
+          <option value="bakery">Bakeries</option>
+          <option value="bar">Bars</option>
+          <option value="library">Libraries</option>
+          <option value="park">Parks</option>
+        </select>
+      </label>
 
-  <div class="cards"></div>
- </body>
+      <div class="btnrow">
+        <!-- aria-pressed controls green/gray color -->
+        <button id="findBtn"  aria-pressed="true"  onclick="getLocation()">Find Near Me</button>
+        <button id="savedBtn" aria-pressed="false" onclick="showSaved()">Show Saved</button>
+        <button id="themeBtn" class="secondary" onclick="toggleTheme()">🌙 Dark mode</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="cards"><p class="empty">Pick a type and tap “Find Near Me”.</p></div>
+  </main>
+</body>
 </html>
