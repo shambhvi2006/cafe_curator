@@ -1,10 +1,12 @@
 // backend/server.js
-import "dotenv/config";            // auto-loads backend/.env
 import express from "express";
 import cors from "cors";
 import axios from "axios";
 import path from "path";
 import { fileURLToPath } from "url";
+import dotenv from 'dotenv';
+dotenv.config();
+const apiKey = process.env.GOOGLE_API_KEY;
 
 const app = express();
 
