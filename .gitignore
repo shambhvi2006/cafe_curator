@@ -1,0 +1,10 @@
+﻿# Node deps
+node_modules/
+backend/node_modules/
+
+# Env files (secrets)
+.env
+backend/.env
+
+# Build artifacts
+dist/

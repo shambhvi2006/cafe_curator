@@ -1,18 +1,9 @@
-/* Curator with headings, per-type saved, caching & rate-limit
-   - Geolocation (10-min cache)
-   - Nearby search by dropdown type
-   - Results cache (5 min) by type + rounded lat/lng
-   - Rate limit: one in-flight, min gap between calls
-   - Drag/swipe cards with Hammer.js (pan + fling)
-   - Saved list per type (saved:cafe, saved:restaurant, …)
-   - Dark mode + active button state + dynamic heading/subtitle
-*/
+/* Backend-powered Curator (no Google SDK in browser) */
 (() => {
   const CACHE_MINUTES = 10;           // location cache
   const RESULT_TTL = 5 * 60 * 1000;   // results cache
   const SEARCH_RADIUS_M = 1500;
   const REQUEST_GAP_MS = 2500;        // min gap to avoid spamming
-  let placesService = null;
   let inFlight = false;
   let lastRequestAt = 0;
 
@@ -32,7 +23,7 @@
     localStorage.setItem('currentType', val);
     setActive('find');
     updateHeading('find');
-    getLocation(); // trigger a fresh search for this type
+    getLocation(); // fresh search
   };
 
   // Init UI on load
@@ -99,7 +90,6 @@
     setActive('find');
     updateHeading('find');
 
-    // prevent rapid re-clicks
     if (inFlight || Date.now() - lastRequestAt < REQUEST_GAP_MS) return;
 
     const cache = JSON.parse(localStorage.getItem('cachedLocation') || '{}');
@@ -110,7 +100,7 @@
       return;
     }
 
-    if (!navigator.geolocation) return alert('Geolocation not supported by this browser.');
+    if (!navigator.geolocation) return renderEmpty('Geolocation not supported by this browser.');
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -121,16 +111,12 @@
       },
       (err) => {
         console.error('Geolocation error:', err);
-        setBusy(false); // safety
-        alert('Location access denied or unavailable.');
+        setBusy(false);
+        renderEmpty('Location access denied or unavailable.');
       },
       { enableHighAccuracy: true, timeout: 8000 }
     );
   };
-
-  function ensureGoogleReady() {
-    return !!(window.google && google.maps && google.maps.places);
-  }
 
   // Result cache helpers
   const cacheKey = (lat, lng, type) => {
@@ -147,58 +133,56 @@
     localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
   }
 
-  function useLocation(lat, lng) {
-    if (!ensureGoogleReady()) {
-      setBusy(false); // safety
-      alert('Maps SDK not loaded. Ensure the script tag has libraries=places and is before app.js');
-      return;
-    }
-
-    // Try results cache first (free)
+  async function useLocation(lat, lng) {
     const key = cacheKey(lat, lng, currentType);
     const cached = getCachedResults(key);
     if (cached) {
       displayCards(cached);
-      setBusy(false); // ensure button is enabled
+      setBusy(false);
       return;
     }
 
-    // Create service once (no visible map needed)
-    if (!placesService) {
-      const dummyMap = new google.maps.Map(document.createElement('div'), {
-        center: { lat, lng }, zoom: 14
-      });
-      placesService = new google.maps.places.PlacesService(dummyMap);
-    }
-
-    // Rate limit + disable button
     if (inFlight || Date.now() - lastRequestAt < REQUEST_GAP_MS) return;
     inFlight = true;
     lastRequestAt = Date.now();
     setBusy(true);
 
-    const request = { location: { lat, lng }, radius: SEARCH_RADIUS_M, type: currentType };
+    try {
+      const url = new URL("/api/nearby", window.location.origin);
+      url.searchParams.set("type", currentType);
+      url.searchParams.set("lat", lat);
+      url.searchParams.set("lng", lng);
+      url.searchParams.set("radius", String(SEARCH_RADIUS_M));
 
-    placesService.nearbySearch(request, (results, status/*, pagination*/) => {
-      // always re-enable button + clear inFlight
-      inFlight = false;
-      setBusy(false);
+      const res = await fetch(url.toString(), { headers: { "Accept": "application/json" } });
+      let json = null;
+      try { json = await res.json(); } catch (_) {}
 
-      if (status !== google.maps.places.PlacesServiceStatus.OK || !results?.length) {
-        renderEmpty('No places found nearby. Try another type or try again.');
+      if (!res.ok) {
+        const msg = (json && (json.message || json.error || json.status)) || `API ${res.status}`;
+        console.error("Nearby fetch failed:", json || res.status);
+        renderEmpty(`Failed: ${msg}`);
         return;
       }
 
-      const sorted = results.slice().sort((a,b) => (b.rating||0) - (a.rating||0));
-      setCachedResults(key, sorted);
-      displayCards(sorted);
-
-      // Save quota: don't auto page. Uncomment if you want more results.
-      // if (pagination && pagination.hasNextPage) setTimeout(() => pagination.nextPage(), 900);
-    });
+      const results = Array.isArray(json.results) ? json.results : [];
+      if (!results.length) {
+        renderEmpty('No places found nearby. Try another type or try again.');
+      } else {
+        const sorted = results.slice().sort((a,b) => (b.rating||0) - (a.rating||0));
+        setCachedResults(key, sorted);
+        displayCards(sorted);
+      }
+    } catch (e) {
+      console.error(e);
+      renderEmpty('Failed to fetch places. Please try again.');
+    } finally {
+      inFlight = false;
+      setBusy(false);
+    }
   }
 
-  // Disable/enable Find with a watchdog so it never gets stuck
+  // Disable/enable Find with a watchdog
   function setBusy(isBusy){
     const btn = document.getElementById('findBtn');
     if (!btn) return;
@@ -237,8 +221,8 @@
       const card = document.createElement('div');
       card.className = 'location-card';
 
-      const imgUrl = place.photos?.[0]?.getUrl
-        ? place.photos[0].getUrl({ maxWidth: 520 })
+      const imgUrl = place.photo
+        ? place.photo                          // proxied /api/photo URL from backend
         : 'https://via.placeholder.com/520x300?text=No+Image';
 
       const rating = place.rating ?? 'N/A';
@@ -364,7 +348,6 @@
       wrapper.appendChild(card);
       container.appendChild(wrapper);
 
-      // Remove from this type’s saved list on left fling
       const mgr = new Hammer.Manager(wrapper, { touchAction: 'pan-y' });
       mgr.add(new Hammer.Swipe({ direction: Hammer.DIRECTION_HORIZONTAL }));
       mgr.on('swipeleft', () => {
@@ -376,7 +359,6 @@
         setTimeout(() => wrapper.remove(), 280);
       });
 
-      // Add nice drag behavior (no right-save here)
       attachSwipeHandlers(wrapper, { onSave: null });
     });
   };
